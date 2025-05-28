@@ -10,23 +10,6 @@
 >
 > Happy Coding!
 
-
-This example app is focused on demonstrating the power and flexibility of [Stytch](stytch) in [B2B Authentication](https://stytch.com/b2b) scenarios from a **backend-focused** approach, leveraging [Stytch Frontend SDKs](https://stytch.com/docs/b2b/guides/implementation/frontend-headless) and direct calls to the [Stytch Backend API](https://stytch.com/docs/b2b/guides/implementation/backend) to build custom functionality for frontend and backend.
-
-## 👀 Looking for an example of [Stytch B2B Pre-Built UI components][stytch-prebuilt-ui]? 👀
-### See [stytchauth/stytch-b2b-saas-pre-built-ui-example][b2b-prebuilt-ui-gh]
-
-
-## Features
-
-- [Multi-tenancy in Stytch's data model](https://stytch.com/docs/b2b/guides/multi-tenancy)
-- [Role-Based Access Control (RBAC)](https://stytch.com/docs/b2b/guides/rbac/overview)
-- [Stytch Organization](https://stytch.com/docs/b2b/guides/organizations/org-settings) and member settings management via your own UI
-- Supports multiple authentication methods ([Email Magic Link (EML)](https://stytch.com/docs/b2b/guides/magic-links/overview) and [OAuth](https://stytch.com/docs/b2b/guides/oauth/overview) implemented)
-
-
-The auth-specific logic is well documented, including links to the underlying API calls being used, and the example code kept simple and separate for easy review and subsequent deletion.
-
 ## Project Structure
 
 This project has two components: a client built as an single-page app (SPA) [React](https://react.dev) app dashboard embedded in an [Astro](https://astro.build) site (source in `client`) and a server built as a [Node](https://nodejs.org) [Express](https://expressjs.com) API (source in `server`). Both live in this repo, and you can run them both at the same time by opening two terminals.
@@ -77,8 +60,6 @@ If you don't have one already, in the [Stytch Dashboard][stytch-dashboard], clic
 
 Configure the following [Redirect URLs](https://stytch.com/docs/b2b/guides/dashboard/redirect-urls) for your project in the [Stytch Dashboard Redirect URLs][stytch-dashboard-redirect-urls] page:
 
-- `http://localhost:3000/auth/redirect` Set as **DEFAULT** for **Login, Signup, Invite, Reset Password and Discovery** types.
-
 - `http://localhost:3000/authenticate` with **Login, Signup, Invite, Reset Password and Discovery** types.
 
 - `http://localhost:4321/dashboard/login` with **Login** type.
@@ -87,38 +68,7 @@ Configure the following [Redirect URLs](https://stytch.com/docs/b2b/guides/dashb
 
 In the [Stytch Dashboard SDK Configuration](https://stytch.com/dashboard/sdk-configuration) the make the following updates:
 
-- **Member actions & permissions** must be **enabled**. To learn more about our RBAC implementation, see our [RBAC guide][stytch-rbac-guide].
-
 - Under **Authorized applications** add `http://localhost:4321` as an authorized domain in addition to `http://localhost:3000`.
-
-#### Create the required resource and actions and assign to Stytch Default Roles
-
-[Stytch's Role-Based Access Control (RBAC)](https://stytch.com/docs/b2b/guides/rbac/getting-started) solution is an authorization model that manages access to resources within your application. Our RBAC model streamlines the management and enforcement of permissions with a flexible interface that's designed for a multi-tenant auth system.
-
-We will be leverage the `stytch_admin` and `stytch_member` created by default for each project [Stytch Resources & Roles Stytch B2B SaaS Authentication](https://stytch.com/docs/b2b/guides/rbac/stytch-defaults) and creating a resource `idea`, with CRUD actions.
-
-In your Stytch dashboard under [Roles & Permissions > Resources](https://stytch.com/dashboard/rbac?env=test&type=Resources), create a resource called `idea`. Give the `idea` resource the following actions:
-
-- `create`
-- `delete`
-- `read`
-- `update`
-
-![the idea resource in the Stytch dashboard](doc/dashboard-stytch-resources.jpg)
-
-Navigate to [Roles & Permissions](https://stytch.com/dashboard/rbac?env=test&type=Roles) and
-
-- Update the `stytch_admin` role to allow all actions for the `idea` with `*`
-
-![stytch_admin role with all idea actions](doc/dashboard-stytch-admin-idea-config.png)
-
-- Update the `stytch_member` role with `create` and `read` actions
-
-![stytch_member role with create and read actions](doc/dashboard-stytch-member-idea-config.png)
-
-This allows `stytch_member`'s to create and read ideas and `stytch_admin` with all CRUD functionality that we can leverage for our application logic, enforced by Stytch.
-
-Read more about the capabilities of the default roles `stytch_admin` and `stytch_member` in [our docs](https://stytch.com/docs/b2b/guides/rbac/stytch-defaults).
 
 #### Get your API credentials and store them in the `.env` files
 
@@ -141,10 +91,6 @@ Next, add the same public token to `client/.env`:
 PUBLIC_API_URL="http://localhost:3000"
 PUBLIC_STYTCH_TOKEN=""
 ```
-
-#### Set Up OAuth (Optional)
-
-To allow sign in with Google and/or Microsoft OAuth, follow the steps in your [Stytch Dashboard][stytch-dashboard] to [configure the OAuth apps](https://stytch.com/dashboard/oauth) Refer to [Log in with OAuth](https://stytch.com/docs/b2b/guides/oauth/login) in the [Stytch B2B SaaS Authentication](https://stytch.com/docs/b2b/guides/oauth/login) guides more information.
 
 ## Start the client and server
 
@@ -180,6 +126,5 @@ From here, you should be able to open the site in your browser, and clicking on 
 [stytch-dashboard]: https://stytch.com/dashboard/
 [stytch-dashboard-redirect-urls]: https://stytch.com/dashboard/redirect-urls
 [stytch-b2b]: https://stytch.com/b2b
-[stytch-rbac-guide]: https://stytch.com/docs/b2b/guides/rbac/overview
 [stytch-prebuilt-ui]: https://stytch.com/docs/b2b/guides/ui-components/overview
 [b2b-prebuilt-ui-gh]: https://github.com/stytchauth/stytch-b2b-saas-pre-built-ui-example
