@@ -27,7 +27,7 @@ import {
   useStytchMember,
   useStytchMemberSession,
 } from "@stytch/react/b2b";
-import { StytchB2BHeadlessClient } from "@stytch/vanilla-js/b2b/headless";
+import { StytchB2BUIClient } from "@stytch/vanilla-js/b2b";
 import {
   QueryClient,
   QueryClientProvider,
@@ -49,65 +49,6 @@ import styles from "./app.module.css";
 import * as Pages from "./components/pages";
 
 /**
- * This component is a bare bones organization switcher that shows a list of
- * every organization the current member is part of and selects the one they’re
- * currently authed into.
- *
- * @see https://stytch.com/docs/b2b/sdks/javascript-sdk/discovery
- */
-const OrgSwitcher = () => {
-  const { member } = useStytchMember();
-  const { isPending, error, data } = useQuery({
-    queryKey: ["stytch:organizations:list", member?.member_id],
-    queryFn: () => {
-      // load the current member’s organizations using the Stytch React SDK
-      return stytchClient.discovery.organizations.list();
-    },
-    staleTime: 60_000,
-  });
-
-  if (isPending || error) {
-    return null;
-  }
-
-  return (
-    <form
-      className={styles.orgSelector}
-      action={new URL(
-        "/auth/switch-team",
-        import.meta.env.PUBLIC_API_URL,
-      ).toString()}
-      method="POST"
-      onChange={(e) => {
-        /*
-         * To avoid a two-step process, submit the form immediately when a new
-         * option is selected.
-         */
-        e.currentTarget.submit();
-      }}
-    >
-      <select defaultValue={member?.organization_id} name="organization_id">
-        <optgroup label="Your Teams">
-          {data.discovered_organizations.map((team) => {
-            const orgId = team.organization.organization_id;
-
-            return (
-              <option key={orgId} value={orgId}>
-                {team.organization.organization_name}
-              </option>
-            );
-          })}
-        </optgroup>
-
-        <optgroup label="Options">
-          <option value="new">create a new team</option>
-        </optgroup>
-      </select>
-    </form>
-  );
-};
-
-/**
  * This component loads the current member session and will only display its
  * children if one is found.
  *
@@ -119,20 +60,15 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   let location = useLocation();
 
   useEffect(() => {
-    // TODO: Remove temoprary timeout for session not being set immediately
-    const timer = setTimeout(() => {
-      if (!session) {
-        navigate("/dashboard/login", {
-          state: {
-            from: location,
-          },
-          replace: true,
-        });
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [fromCache, session]);
+    if (!session && !fromCache) {
+      navigate("/dashboard/login", {
+        state: {
+          from: location,
+        },
+        replace: true,
+      });
+    }
+  }, [navigate, location]);
 
   return session ? children : null;
 }
@@ -146,6 +82,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
  */
 const Layout = () => {
   const { session } = useStytchMemberSession();
+  const stytch = useStytchB2BClient()
+  const onLogout = () => stytch.session.revoke();
 
   return (
     <main className={styles.dashboard}>
@@ -163,8 +101,6 @@ const Layout = () => {
 
         {session?.member_id ? (
           <>
-            <OrgSwitcher />
-
             <h3>Dashboard</h3>
             <nav>
               <Link to="/dashboard">View all ideas &rarr;</Link>
@@ -181,10 +117,7 @@ const Layout = () => {
             <nav>
               <Link to="/dashboard/account">Account Settings</Link>
               <a
-                href={new URL(
-                  "/auth/logout",
-                  import.meta.env.PUBLIC_API_URL,
-                ).toString()}
+                onClick={onLogout}
               >
                 Log Out
               </a>
@@ -355,6 +288,7 @@ const DashboardAccount = () => (
 const Router = () => {
   return (
     <Routes>
+      <Route path="authenticate" element={<Pages.Login />} />
       <Route path="dashboard/login" element={<LoginLayout />} />
       <Route path="dashboard" element={<Layout />}>
         <Route index element={<DashboardHome />} />
@@ -375,7 +309,7 @@ const Router = () => {
 /**
  * @see https://stytch.com/docs/b2b/sdks/javascript-sdk/installation
  */
-const stytchClient = new StytchB2BHeadlessClient(
+const stytchClient = new StytchB2BUIClient(
   import.meta.env.PUBLIC_STYTCH_TOKEN,
 );
 const queryClient = new QueryClient();

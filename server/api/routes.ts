@@ -9,21 +9,19 @@
  * The most relevant things to note are:
  *
  *  - the {@link authenticateAndAuthorize} middleware for authorization checks on custom
- * 		roles and resources
+ *        roles and resources
  *  - how member data from Stytch is synced with the app’s database in e.g. the
- * 		`POST /idea` route
+ *        `POST /idea` route
  *  - how organization and member settings are surfaced to members so they can
- * 		manage Stytch settings from within the app itself in e.g. `POST /account`
+ *        manage Stytch settings from within the app itself in e.g. `POST /account`
  */
 
-import { Router } from "express";
+import {Router} from "express";
 import {
-  authenticate,
-  authenticateAndAuthorize,
-  getAuthenticatedUserInfo,
-  loadStytch,
+    authenticateStytchSession,
+    loadStytch,
 } from "../auth/index.js";
-import { addIdea, deleteIdea, getIdeas, updateUserName } from "../db/index.js";
+import {addIdea, deleteIdea, getIdeas} from "../db/index.js";
 
 export const api = Router();
 
@@ -34,32 +32,30 @@ export const api = Router();
  * @see https://stytch.com/docs/b2b/guides/rbac/stytch-defaults
  */
 api.get(
-  "/ideas",
-  authenticateAndAuthorize("idea", "read"),
-  async (req, res) => {
-    const { member } = await getAuthenticatedUserInfo({ req });
-    const allIdeas = await getIdeas(member!.organization_id);
+    "/ideas",
+    authenticateStytchSession(),
+    async (req, res) => {
+        const allIdeas = await getIdeas(req.member.organization_id);
 
-    res.json(allIdeas);
-  },
+        res.json(allIdeas);
+    },
 );
 
 api.post(
-  "/idea",
-  authenticateAndAuthorize("idea", "create"),
-  async (req, res) => {
-    const { member } = await getAuthenticatedUserInfo({ req });
-    const { organization_id, member_id } = member!;
+    "/idea",
+    authenticateStytchSession(),
+    async (req, res) => {
+        const {organization_id, member_id} = req.member!;
 
-    const result = await addIdea({
-      text: req.body.text,
-      status: "pending",
-      creator: member_id,
-      team: organization_id,
-    });
+        const result = await addIdea({
+            text: req.body.text,
+            status: "pending",
+            creator: member_id,
+            team: organization_id,
+        });
 
-    res.json(result.at(0));
-  },
+        res.json(result.at(0));
+    },
 );
 
 /**
@@ -69,13 +65,13 @@ api.post(
  * @see https://stytch.com/docs/b2b/guides/rbac/overview
  */
 api.delete(
-  "/idea",
-  authenticateAndAuthorize("idea", "delete"),
-  async (req, res) => {
-    const result = await deleteIdea(req.body.ideaId);
+    "/idea",
+    authenticateStytchSession(),
+    async (req, res) => {
+        const result = await deleteIdea(req.body.ideaId);
 
-    res.json(result.at(0));
-  },
+        res.json(result.at(0));
+    },
 );
 
 /**
@@ -88,149 +84,116 @@ api.delete(
  *
  * @see https://stytch.com/docs/b2b/guides/rbac/authorization-checks
  */
-api.get("/team", async (req, res) => {
-  const stytch = loadStytch();
+api.get("/team", authenticateStytchSession(), async (req, res) => {
+    const stytch = loadStytch();
 
-  const { member } = await getAuthenticatedUserInfo({ req });
 
-  const response = await stytch.organizations.members.search(
-    {
-      organization_ids: [member!.organization_id],
-    },
-    {
-      // passing the JWT here enforces RBAC for the member
-      authorization: {
-        session_token: req.cookies.stytch_session,
-      },
-    },
-  );
+    const response = await stytch.organizations.members.search(
+        {
+            organization_ids: [req.member!.organization_id],
+        },
+        {
+            // passing the JWT here enforces RBAC for the member
+            authorization: {
+                session_token: req.cookies.stytch_session,
+            },
+        },
+    );
 
-  /*
-   * Not all the details of each member need to be sent to the client. Mapping
-   * over the results to choose only the fields we need reduces how much data
-   * is sent in each request and is a good privacy practice.
-   */
-  const members = response.members.map((member) => {
-    return {
-      id: member.member_id,
-      name: member.name,
-      email: member.email_address,
-      status: member.status,
-      roles: member.roles,
-    };
-  });
+    /*
+     * Not all the details of each member need to be sent to the client. Mapping
+     * over the results to choose only the fields we need reduces how much data
+     * is sent in each request and is a good privacy practice.
+     */
+    const members = response.members.map((member) => {
+        return {
+            id: member.member_id,
+            name: member.name,
+            email: member.email_address,
+            status: member.status,
+            roles: member.roles,
+        };
+    });
 
-  res.json({
-    members,
-    meta: {
-      invites_allowed:
-        Object.values(response.organizations).at(0)?.email_invites ===
-        "ALL_ALLOWED",
-    },
-  });
+    res.json({
+        members,
+        meta: {
+            invites_allowed:
+                Object.values(response.organizations).at(0)?.email_invites ===
+                "ALL_ALLOWED",
+        },
+    });
 });
 
-api.get("/team-settings", authenticate(), async (req, res) => {
-  const stytch = loadStytch();
+api.get("/team-settings", authenticateStytchSession(), async (req, res) => {
+    const stytch = loadStytch();
 
-  const { member } = await getAuthenticatedUserInfo({ req });
 
-  const response = await stytch.organizations.get({
-    organization_id: member!.organization_id,
-  });
+    const response = await stytch.organizations.get({
+        organization_id: req.member!.organization_id,
+    });
 
-  res.json(response.organization);
+    res.json(response.organization);
 });
 
 api.post(
-  "/team-settings",
-  authenticateAndAuthorize("stytch.organization", "*"),
-  async (req, res) => {
-    const stytch = loadStytch();
-    const { member } = await getAuthenticatedUserInfo({ req });
+    "/team-settings",
+    authenticateStytchSession(),
+    async (req, res) => {
+        const stytch = loadStytch();
 
-    const {
-      email_invites,
-      allowed_auth_methods,
-      email_allowed_domains,
-      email_jit_provisioning,
-    } = req.body;
-    const auth_methods = [
-      "sso",
-      "magic_link",
-      "password",
-      "google_oauth",
-      "microsoft_oauth",
-    ].every((m) => allowed_auth_methods.includes(m))
-      ? "ALL_ALLOWED"
-      : "RESTRICTED";
+        const {
+            email_invites,
+            allowed_auth_methods,
+            email_allowed_domains,
+            email_jit_provisioning,
+        } = req.body;
+        const auth_methods = [
+            "sso",
+            "magic_link",
+            "password",
+            "google_oauth",
+            "microsoft_oauth",
+        ].every((m) => allowed_auth_methods.includes(m))
+            ? "ALL_ALLOWED"
+            : "RESTRICTED";
 
-    const params: any = {
-      organization_id: member!.organization_id,
-      allowed_auth_methods,
-      auth_methods,
-      email_invites: email_invites ? "ALL_ALLOWED" : "NOT_ALLOWED",
-    };
+        const params: any = {
+            organization_id: req.member!.organization_id,
+            allowed_auth_methods,
+            auth_methods,
+            email_invites: email_invites ? "ALL_ALLOWED" : "NOT_ALLOWED",
+        };
 
-    if (email_allowed_domains.length > 0) {
-      params.email_allowed_domains = email_allowed_domains
-        .split(",")
-        .map((d: string) => d.trim());
-    }
+        if (email_allowed_domains.length > 0) {
+            params.email_allowed_domains = email_allowed_domains
+                .split(",")
+                .map((d: string) => d.trim());
+        }
 
-    if (email_jit_provisioning && email_allowed_domains.length > 0) {
-      params.email_jit_provisioning = "RESTRICTED";
-    } else {
-      params.email_jit_provisioning = "NOT_ALLOWED";
-    }
+        if (email_jit_provisioning && email_allowed_domains.length > 0) {
+            params.email_jit_provisioning = "RESTRICTED";
+        } else {
+            params.email_jit_provisioning = "NOT_ALLOWED";
+        }
 
-    const response = await stytch.organizations.update(params, {
-      // passing the JWT here enforces RBAC for the member
-      authorization: {
-        session_token: req.cookies.stytch_session,
-      },
-    });
+        const response = await stytch.organizations.update(params, {
+            // passing the JWT here enforces RBAC for the member
+            authorization: {
+                session_token: req.cookies.stytch_session,
+            },
+        });
 
-    if (response.status_code !== 200) {
-      res.sendStatus(response.status_code);
-    }
+        if (response.status_code !== 200) {
+            res.sendStatus(response.status_code);
+        }
 
-    res.redirect(
-      new URL("/dashboard/team-settings", process.env.APP_URL).toString(),
-    );
-  },
+        res.redirect(
+            new URL("/dashboard/team-settings", process.env.APP_URL).toString(),
+        );
+    },
 );
 
-api.get("/account", authenticate(), async (req, res) => {
-  const { member } = await getAuthenticatedUserInfo({ req });
-
-  res.json(member);
-});
-
-api.post("/account", async (req, res) => {
-  const stytch = loadStytch();
-
-  const { member } = await getAuthenticatedUserInfo({ req });
-
-  const response = await stytch.organizations.members.update(
-    {
-      organization_id: member!.organization_id,
-      member_id: member!.member_id,
-      name: req.body.name,
-    },
-    {
-      // passing the JWT here enforces RBAC for the member
-      authorization: {
-        session_token: req.cookies.stytch_session,
-      },
-    },
-  );
-
-  await updateUserName(member!.member_id, req.body.name);
-
-  if (response.status_code !== 200) {
-    res.sendStatus(response.status_code);
-  }
-
-  res.redirect(new URL("/dashboard/account", process.env.APP_URL).toString());
+api.get("/account", authenticateStytchSession(), async (req, res) => {
+    res.json(req.member);
 });

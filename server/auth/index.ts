@@ -1,6 +1,5 @@
-import type { CookieOptions, Request, RequestHandler, Response } from "express";
+import type {CookieOptions, Request, RequestHandler, Response} from "express";
 import * as stytch from "stytch";
-import { addUser, getUser } from "../db/index.js";
 
 /**
  * Options for setting cookies.
@@ -10,7 +9,7 @@ import { addUser, getUser } from "../db/index.js";
  * @default { path : '/' }
  * @see https://www.npmjs.com/package/cookies#cookiessetname--values--options
  */
-export const cookieOptions: CookieOptions = { path: "/" };
+export const cookieOptions: CookieOptions = {path: "/"};
 
 /**
  * The URL for the Stytch API changes based on the environment you’re working
@@ -20,9 +19,9 @@ export const cookieOptions: CookieOptions = { path: "/" };
  * @see https://stytch.com/docs/b2b/guides/dashboard/api-keys
  */
 export const stytchEnv =
-  process.env.STYTCH_PROJECT_ENV === "live"
-    ? stytch.envs.live
-    : stytch.envs.test;
+    process.env.STYTCH_PROJECT_ENV === "live"
+        ? stytch.envs.live
+        : stytch.envs.test;
 
 /**
  * Make it possible to load the Stytch SDK’s B2B client anywhere in the backend
@@ -32,115 +31,24 @@ export const stytchEnv =
  */
 let client: stytch.B2BClient;
 export const loadStytch = () => {
-  if (!client) {
-    client = new stytch.B2BClient({
-      project_id: process.env.STYTCH_PROJECT_ID ?? "",
-      secret: process.env.STYTCH_SECRET ?? "",
-      env: stytchEnv,
-    });
-  }
+    if (!client) {
+        client = new stytch.B2BClient({
+            project_id: process.env.STYTCH_PROJECT_ID ?? "",
+            secret: process.env.STYTCH_SECRET ?? "",
+            env: stytchEnv,
+        });
+    }
 
-  return client;
+    return client;
 };
 
-/**
- * Helper method to get member and organization info from the Stytch session.
- *
- */
-export async function getAuthenticatedUserInfo({ req }: { req: Request }) {
-  const stytch = loadStytch();
-
-  const sessionToken = req.cookies.stytch_session;
-
-  let sessionAuthRes;
-  try {
-    sessionAuthRes = await stytch.sessions.authenticate({
-      session_token: sessionToken,
-    });
-  } catch (err) {
-    console.error("Could not find member by session token", err);
-  }
-
-  return {
-    member: sessionAuthRes?.member,
-    organization: sessionAuthRes?.organization,
-  };
-}
-
-/**
- * A helper for exchanging Stytch intermediate tokens for a fully authenticated
- * session for a given organization.
- *
- * @see https://stytch.com/docs/b2b/api/exchange-intermediate-session
- *
- * NOTE: The names of the cookies are important! The Stytch JavaScript SDK
- * requires these specific session names.
- *
- * @see https://stytch.com/docs/b2b/sdks/javascript-sdk/resources/cookies-and-session-management
- */
-export async function exchangeIntermediateToken({
-  res,
-  intermediate_session_token,
-  organization_id,
-}: {
-  res: Response;
-  intermediate_session_token: string;
-  organization_id: string;
-}) {
-  const stytch = loadStytch();
-
-  const session = await stytch.discovery.intermediateSessions.exchange({
-    intermediate_session_token,
-    organization_id,
-  });
-
-  if (session.status_code !== 200) {
-    res.status(session.status_code).json(session);
-    return;
-  }
-
-  res.clearCookie("discovered_orgs");
-  res.clearCookie("intermediate_token");
-
-  // Ensure the member exists in the database
-  const { member } = session;
-  const currentMember = await getUser(member.member_id);
-  if (!currentMember?.id) {
-    await addUser({ id: member.member_id, name: member.name });
-  }
-
-  // Set cookies needed for the Stytch SDK's
-  // https://stytch.com/docs/b2b/sdks/javascript-sdk/resources/cookies-and-session-management
-  res.cookie("stytch_session", session.session_token, cookieOptions);
-}
-
-/**
- * Express middleware for authenticating a user
- *
- * @see https://stytch.com/docs/b2b/api/authenticate-session
- */
-export function authenticate(): RequestHandler {
-  const stytch = loadStytch();
-
-  return async (req, res, next) => {
-    try {
-      console.log("in authenticate try");
-      const response = await stytch.sessions.authenticate({
-        session_token: req.cookies.stytch_session,
-      });
-
-      if (response.session_token) {
-        next();
-      } else {
-        throw new Error("Unauthorized");
-      }
-    } catch (err) {
-      res.status(401).json({ message: "Unauthorized" });
-      res.end();
+declare global {
+    namespace Express {
+        interface Request {
+            member: stytch.Member;
+        }
     }
-  };
 }
-
 /**
  * Express middleware for ensuring the user requesting a route has permission to
  * do the thing they’re trying to do. This uses Stytch RBAC authorization checks
@@ -149,32 +57,41 @@ export function authenticate(): RequestHandler {
  * @see https://stytch.com/docs/b2b/guides/rbac/authorization-checks
  * @see https://stytch.com/docs/b2b/api/authenticate-session
  */
-export function authenticateAndAuthorize(
-  resource: string,
-  action: string,
-): RequestHandler {
-  const stytch = loadStytch();
+export function authenticateStytchSession(): RequestHandler {
+    const stytch = loadStytch();
 
-  return async (req, res, next) => {
-    try {
-      const { member } = await getAuthenticatedUserInfo({ req });
-      const response = await stytch.sessions.authenticate({
-        session_token: req.cookies.stytch_session,
-        authorization_check: {
-          organization_id: member!.organization_id,
-          resource_id: resource,
-          action,
-        },
-      });
+    return async (req, res, next) => {
+        try {
+            const sessionToken = req.cookies.stytch_session;
 
-      if (response.verdict?.authorized) {
-        next();
-      } else {
-        throw new Error("Unauthorized");
-      }
-    } catch (err) {
-      res.status(401).json({ message: "Unauthorized" });
-      res.end();
-    }
-  };
+            const sessionAuthRes = await stytch.sessions.authenticate({
+                session_token: sessionToken,
+            });
+
+            const hasPasswordFactor = sessionAuthRes.member_session.authentication_factors
+                .find(factor => factor.type === "password");
+            const hasEmailOTPFactor = sessionAuthRes.member_session.authentication_factors
+                .find(factor => factor.type === "email_otp");
+            const hasSMSOTPFactor = sessionAuthRes.member_session.authentication_factors
+                .find(factor => factor.type === "sms_otp");
+            const hasTOTPFactor = sessionAuthRes.member_session.authentication_factors
+                .find(factor => factor.type === "totp");
+
+            const hasSecondFactor = hasEmailOTPFactor || hasSMSOTPFactor || hasTOTPFactor;
+
+            if(!hasPasswordFactor || !hasSecondFactor) {
+                console.log('Failed to validate session', {hasPasswordFactor, hasSecondFactor})
+                res.status(401).json({message: "Unauthorized"});
+                res.end();
+                return;
+            }
+
+            req.member = sessionAuthRes.member;
+            next();
+        } catch (err) {
+            res.status(401).json({message: "Unauthorized"});
+            res.end();
+            return;
+        }
+    };
 }
